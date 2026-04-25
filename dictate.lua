@@ -1,9 +1,9 @@
 -- Whisper Dictation for Hammerspoon
--- ctrl+ctrl → English dictation (tap again to stop + transcribe)
--- cmd+cmd   → Swedish dictation (tap again to stop + transcribe)
--- esc       → abort current recording
+-- left-shift+left-shift   → English dictation (tap again to stop + transcribe)
+-- right-shift+right-shift → Swedish dictation (tap again to stop + transcribe)
+-- esc                     → abort current recording
 
-local PROJECT_DIR      = "/Users/storg/Developer/whisper-dictation"
+local PROJECT_DIR      = "/Users/minig/Developer/whisper-dictation"
 local AUDIO_FILE       = "/tmp/whisper-dictation.wav"
 local TRANSCRIBE_SCRIPT = PROJECT_DIR .. "/transcribe.sh"
 local SOX_BIN          = "/opt/homebrew/bin/sox"
@@ -13,9 +13,14 @@ local recordingTask = nil
 local currentLang   = nil
 local alertUuid     = nil
 
-local modState = {
-  ctrl = { down = false, alone = false, lastTap = 0 },
-  cmd  = { down = false, alone = false, lastTap = 0 },
+-- Left/right shift are distinguished by raw keycode (flagsChanged gives a
+-- single `shift` flag for both, so we track each side independently).
+local LSHIFT_KC = 56
+local RSHIFT_KC = 60
+
+local shiftState = {
+  [LSHIFT_KC] = { name = "lshift", down = false, alone = false, lastTap = 0 },
+  [RSHIFT_KC] = { name = "rshift", down = false, alone = false, lastTap = 0 },
 }
 
 local function now_ms()
@@ -74,6 +79,13 @@ local function startRecording(lang)
   recordingTask = hs.task.new(SOX_BIN,
     function(exitCode, stdout, stderr)
       recordingTask = nil
+      if exitCode ~= 0 then
+        local f = io.open("/tmp/whisper-dictate.log", "a")
+        if f then
+          f:write(os.date() .. " sox exit=" .. tostring(exitCode) .. " stderr=" .. tostring(stderr) .. "\n")
+          f:close()
+        end
+      end
     end,
     { "-d", "-r", "16000", "-c", "1", "-b", "16", AUDIO_FILE })
   if not recordingTask:start() then
@@ -112,45 +124,60 @@ local function handleDoubleTap(mod)
   if currentLang then
     stopRecording(true)
   else
-    startRecording(mod == "ctrl" and "en" or "sv")
+    startRecording(mod == "lshift" and "en" or "sv")
   end
 end
 
--- Any keyDown while a tracked modifier is held → not a clean tap
+-- Any keyDown while a shift is held → not a clean tap
 local keyTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
-  for _, s in pairs(modState) do
+  for _, s in pairs(shiftState) do
     if s.down then s.alone = false end
   end
   return false
 end)
 keyTap:start()
 
--- Detect clean double-taps of ctrl or cmd
+-- Detect clean double-taps of left-shift or right-shift.
+-- flagsChanged fires once per press and once per release; getKeyCode() tells
+-- us which physical shift changed, and we infer press vs release from our
+-- own tracked state (the `shift` flag alone can't distinguish sides).
 local flagsTap = hs.eventtap.new({ hs.eventtap.event.types.flagsChanged }, function(e)
   local flags = e:getFlags()
+  local kc = e:getKeyCode()
   local t = now_ms()
 
-  local activeCount = 0
-  for _, v in pairs(flags) do
-    if v then activeCount = activeCount + 1 end
+  local otherMods = 0
+  for fname, v in pairs(flags) do
+    if v and fname ~= "shift" then otherMods = otherMods + 1 end
   end
 
-  for modName, s in pairs(modState) do
-    local isDown = flags[modName] == true
-    if isDown and not s.down then
+  local s = shiftState[kc]
+  if s then
+    if not s.down then
       s.down = true
-      s.alone = (activeCount == 1)
-    elseif isDown and s.down then
-      if activeCount > 1 then s.alone = false end
-    elseif not isDown and s.down then
+      local otherShiftDown = false
+      for kc2, s2 in pairs(shiftState) do
+        if kc2 ~= kc and s2.down then otherShiftDown = true end
+      end
+      s.alone = (otherMods == 0 and not otherShiftDown)
+      if otherShiftDown then
+        for _, s2 in pairs(shiftState) do s2.alone = false end
+      end
+    else
       s.down = false
       if s.alone then
         if t - s.lastTap < DOUBLE_TAP_MS then
           s.lastTap = 0
-          handleDoubleTap(modName)
+          handleDoubleTap(s.name)
         else
           s.lastTap = t
         end
+      end
+    end
+  else
+    if otherMods > 0 then
+      for _, s2 in pairs(shiftState) do
+        if s2.down then s2.alone = false end
       end
     end
   end
