@@ -19,7 +19,21 @@ else
   echo "==> Model already downloaded."
 fi
 
+VAD_MODEL="$MODELS_DIR/ggml-silero-v6.2.0.bin"
+if [ ! -f "$VAD_MODEL" ]; then
+  echo "==> Downloading Silero VAD model (~1MB)..."
+  curl -L --fail --progress-bar \
+    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin" \
+    -o "$VAD_MODEL"
+fi
+
 chmod +x "$SCRIPT_DIR/transcribe.sh"
+
+echo "==> Installing whisper-server login agent (keeps the model loaded)..."
+AGENT="$HOME/Library/LaunchAgents/net.portfoliobox.whisper-server.plist"
+launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null || true
+sed "s#__PROJECT_DIR__#$SCRIPT_DIR#g" "$SCRIPT_DIR/net.portfoliobox.whisper-server.plist" > "$AGENT"
+launchctl bootstrap "gui/$(id -u)" "$AGENT"
 
 HS_DIR="$HOME/.hammerspoon"
 ln -sf "$SCRIPT_DIR/dictate.lua" "$HS_DIR/whisper_dictation.lua"

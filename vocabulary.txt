@@ -1,0 +1,16 @@
+# Words Whisper should spell correctly, one per line. Lines starting with # are ignored.
+# Keep the list short (a few dozen words): Whisper only reads the first ~200 tokens.
+Portfoliobox
+CareRouter
+CareMCP
+Pinpal
+Hugin
+Freja
+Claude
+Claude Code
+Hammerspoon
+Whisper
+MCP
+OrbStack
+Plausible
+Linear
