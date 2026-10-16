@@ -21,24 +21,35 @@ To use `ctrl` ×2 (English) and `cmd` ×2 (Swedish) instead, create a
 return { trigger = "ctrl_cmd" }
 ```
 
+macOS can have Siri on double-tap `cmd`. If so, turn off Siri's keyboard
+shortcut (System Settings → Siri), or `cmd` ×2 opens Siri instead.
+
 ## Install
+
+Needs [Homebrew](https://brew.sh). Then:
 
 ```
 ./install.sh
 ```
+
+Installs Hammerspoon too if it's missing (`brew install --cask hammerspoon`).
+It doesn't need to have been started before; the script creates
+`~/.hammerspoon/` and starts Hammerspoon at the end.
 
 Installs `sox` and `whisper-cpp` via Homebrew, downloads the
 `ggml-large-v3-turbo` model (~1.6GB) into `models/`, starts `whisper-server`
 as a login agent on `127.0.0.1:8178` (keeps the model in memory, ~1.8GB RAM,
 so each dictation takes well under a second instead of ~12s; Silero VAD
 drops silence so Whisper doesn't invent text), and symlinks
-`dictate.lua` into `~/.hammerspoon/`.
+`dictate.lua` into `~/.hammerspoon/` as `whisper_dictation.lua`.
 
 After install:
 1. **Disable macOS dictation shortcut** (System Settings → Keyboard →
-   Dictation → Shortcut → Off) — otherwise it conflicts with ctrl+ctrl.
-2. Reload Hammerspoon config (menu bar → Reload Config).
-3. Grant microphone permission to Hammerspoon on first run.
+   Dictation → Shortcut → Off), otherwise it can grab the same keys.
+2. Reload Hammerspoon config (menu bar → Reload Config) if it was already running.
+3. **Grant Accessibility** to Hammerspoon (System Settings → Privacy &
+   Security → Accessibility). It needs it to read the keys and paste text.
+4. Grant microphone permission to Hammerspoon on first run.
 
 ## Files
 
