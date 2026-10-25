@@ -18,13 +18,19 @@ local PROJECT_DIR      = projectDir()
 local AUDIO_FILE       = "/tmp/whisper-dictation.wav"
 local TRANSCRIBE_SCRIPT = PROJECT_DIR .. "/transcribe.sh"
 local SOX_BIN          = "/opt/homebrew/bin/sox"
-local DOUBLE_TAP_MS    = 300
 
 local localConfig = {}
 do
   local ok, cfg = pcall(dofile, PROJECT_DIR .. "/local.lua")
   if ok and type(cfg) == "table" then localConfig = cfg end
 end
+
+-- Max ms between the two taps; local.lua can raise it: return { double_tap_ms = 450 }
+local DOUBLE_TAP_MS = tonumber(localConfig.double_tap_ms) or 300
+
+-- Seconds after pasting before the previous clipboard is put back; local.lua can
+-- raise it so slow apps read the dictated text first: return { restore_delay_s = 1.0 }
+local RESTORE_DELAY_S = tonumber(localConfig.restore_delay_s) or 0.3
 
 -- Trigger keys by raw keycode (flagsChanged gives a single flag for both
 -- sides of a modifier, so each physical key is tracked on its own).
@@ -73,24 +79,32 @@ local function clearAlert()
   end
 end
 
-local function typeText(text)
+-- prev: the whole clipboard (every type, so images and files too), saved by transcribe()
+local function typeText(text, prev)
   if not text or text == "" then return end
-  local prev = hs.pasteboard.getContents()
   hs.pasteboard.setContents(text)
+  local ours = hs.pasteboard.changeCount()
   hs.eventtap.keyStroke({"cmd"}, "v", 0)
-  hs.timer.doAfter(0.3, function()
-    if prev then hs.pasteboard.setContents(prev) end
+  hs.timer.doAfter(RESTORE_DELAY_S, function()
+    -- something was copied since the paste: leave it
+    if hs.pasteboard.changeCount() ~= ours then return end
+    if prev and next(prev) then
+      hs.pasteboard.writeAllData(prev)
+    else
+      hs.pasteboard.clearContents()
+    end
   end)
 end
 
 local function transcribe(lang)
   showAlert("⏳ Transcribing...")
+  local prevClipboard = nil
   local task = hs.task.new("/bin/bash",
     function(exitCode, stdout, stderr)
       clearAlert()
       if exitCode == 0 and stdout and stdout:match("%S") then
         local text = stdout:gsub("^%s+", ""):gsub("%s+$", "")
-        typeText(text)
+        typeText(text, prevClipboard)
       elseif exitCode ~= 0 then
         hs.alert.show("Transcription failed (" .. tostring(exitCode) .. ")")
         print("[whisper] stderr:", stderr)
@@ -100,6 +114,8 @@ local function transcribe(lang)
     end,
     { TRANSCRIBE_SCRIPT, AUDIO_FILE, lang })
   task:start()
+  -- Save the clipboard while Whisper works, so a large image adds no delay
+  prevClipboard = hs.pasteboard.readAllData()
 end
 
 local function startRecording(lang)
