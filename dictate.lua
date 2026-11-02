@@ -83,6 +83,40 @@ local function typeText(text)
   end)
 end
 
+-- Every transcription is appended to this file, one JSON object per line, so a
+-- dictation that never got pasted can be read back (history.sh). The folder is
+-- private to the user. Off by default; local.lua turns it on, keeping the latest
+-- N dictations (return { history = 10 }) or all of them (return { history = true }).
+local HISTORY_DIR  = os.getenv("HOME") .. "/Library/Application Support/whisper-dictation"
+local HISTORY_FILE = HISTORY_DIR .. "/history.jsonl"
+local HISTORY_KEEP = tonumber(localConfig.history)  -- nil for true: no limit
+
+-- Rewrites the file with only its last `keep` lines, through a temporary file
+-- so an interrupted write leaves the old history in place.
+local function trimHistory(keep)
+  local lines = {}
+  for line in io.lines(HISTORY_FILE) do lines[#lines + 1] = line end
+  if #lines <= keep then return end
+  local tmp = HISTORY_FILE .. ".tmp"
+  local out = io.open(tmp, "w")
+  if not out then return end
+  for i = #lines - keep + 1, #lines do out:write(lines[i], "\n") end
+  out:close()
+  os.rename(tmp, HISTORY_FILE)
+end
+
+local function saveHistory(text, lang)
+  if localConfig.history ~= true and not (HISTORY_KEEP and HISTORY_KEEP >= 1) then return end
+  if not hs.fs.attributes(HISTORY_DIR) then
+    os.execute("/bin/mkdir -m 700 -p '" .. HISTORY_DIR .. "'")
+  end
+  local f = io.open(HISTORY_FILE, "a")
+  if not f then return end
+  f:write(hs.json.encode({ time = os.date("%Y-%m-%dT%H:%M:%S"), lang = lang, text = text }) .. "\n")
+  f:close()
+  if HISTORY_KEEP then trimHistory(math.floor(HISTORY_KEEP)) end
+end
+
 local function transcribe(lang)
   showAlert("⏳ Transcribing...")
   local task = hs.task.new("/bin/bash",
@@ -90,6 +124,7 @@ local function transcribe(lang)
       clearAlert()
       if exitCode == 0 and stdout and stdout:match("%S") then
         local text = stdout:gsub("^%s+", ""):gsub("%s+$", "")
+        saveHistory(text, lang)
         typeText(text)
       elseif exitCode ~= 0 then
         hs.alert.show("Transcription failed (" .. tostring(exitCode) .. ")")

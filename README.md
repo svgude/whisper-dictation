@@ -58,6 +58,7 @@ After install:
 - `net.portfoliobox.whisper-server.plist` — LaunchAgent for the server (log: `/tmp/whisper-server.log`)
 - `install.sh` — one-time setup
 - `hammerspoon-reference/` — reference copy of the full Hammerspoon config
+- `history.sh` — prints the latest dictations, when `local.lua` turns the history on
 
 ## Tweaking
 
@@ -68,3 +69,17 @@ All user-tunable settings are at the top of `dictate.lua`:
 - `DOUBLE_TAP_MS` — max ms between taps
 - `AUDIO_FILE` — where the temp wav is written
 - `SOX_BIN` — path to sox
+
+`local.lua` can keep a history of dictations, so a dictation that was
+transcribed but never pasted (the cursor was in the wrong place, the app
+was busy) can be read back. It is off by default, since every dictation is
+then kept on disk. `history = 10` keeps the latest ten, `history = true`
+all of them, in `~/Library/Application Support/whisper-dictation/history.jsonl`
+(one JSON object per line, in a folder only the user can read):
+
+```lua
+return { history = 10 }
+```
+
+`./history.sh` prints the latest dictation; `./history.sh 5` the latest
+five, with time and language.
